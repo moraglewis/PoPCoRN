@@ -15,10 +15,10 @@ It's fine if the stop genes are also in the misregulation list, but their expres
 Source is simply where the data came from (eg ArrayExpress, or a PubMed ID)
 
 Optional inputs:
---prefix=TMP (default) - this prefixes all the output files with the specified prefix
---short - if this is included, the output network will consist of only the shortest paths between each misregulated gene and the stoplist. Default is off.
---debug - outputs what the script is doing. Off by default.
---targets - hardwires the direction of regulation of immediate downstream targets of stoplist in appropriate direction, rather than allowing their misregulation to be determined by the algorithm taking other gene$
+`--prefix=TMP` (default) - this prefixes all the output files with the specified prefix
+`--short` - if this is included, the output network will consist of only the shortest paths between each misregulated gene and the stoplist. Default is off.
+`--debug` - outputs what the script is doing. Off by default.
+`--targets` - hardwires the direction of regulation of immediate downstream targets of stoplist in appropriate direction, rather than allowing their misregulation to be determined by the algorithm taking other gene$
 
 The output is an internally consistent network linking one or more regulators with their known misregulated genes, as experimentally observed, in sif format.
 A list of weightings is also output, containing both the known misregulation values and predictions for genes whose misregulation is not known. For example:
