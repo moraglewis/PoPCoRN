@@ -50,5 +50,6 @@ Y     -1      predicted
 
 This can be used with Cytoscape to colour known and predicted nodes as required.
 
-A list of interactions with sources supporting each - this can be used with Cytoscape to add information to the edges
+A list of interactions with sources supporting each - this can be used with Cytoscape to add information to the edges.
+
 The final output is a list of unused IDs, which are the genes from the microarray which couldn't be included in the network.
