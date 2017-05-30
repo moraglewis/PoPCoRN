@@ -1,4 +1,5 @@
-# PoPCoRN
+![PoPCoRN](./popcorn.png)
+
 Prediction of potential causal regulatory networks
 Perl script to find links between a master regulator and misregulated genes (eg from a microarray)
 
