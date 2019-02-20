@@ -52,7 +52,7 @@ use Getopt::Long;
 # The file will contain the following lines:
 # X	-4	known
 # Y	-1	predicted
-# This can be used with Cytoscape to colour known and predicted nodes as required.
+# This can be used with Cytoscape to style known and predicted nodes as required.
 # A list of interactions with sources supporting each - this can be used with Cytoscape to add information to the edges
 # The final output is a list of unused IDs, which are the genes from the microarray which couldn't be included in the network.
 
@@ -83,6 +83,7 @@ my %source = (); #this holds the source of the data for each regulation
 my $stoplist = ""; #list of master regulators (from stopin)
 my $unused = "Unused IDS:\n"; #string to hold microarray genes which aren't in the network to start with
 my %direct; #This is for holding direct targets of stoplist genes, only used when targets is set
+my $locked = ""; #string holding genes whose regulation is not to be changed (ie it's already known)
 
 #########################################################
 ## Reading in the gene(s) at which the algorithm stops ##
@@ -100,6 +101,7 @@ while(<$fhsl>) {
 	$stopweight =~ s/\r//g;
 
         $stoplist = $stoplist.$newstop."\t"; #add each entry to the stoplist, which is just one text string for easy searching, separated by tabs
+        $locked = $locked.$newstop."\t"; #add each entry to the locked list; these genes cannot have their expression altered
 	$foldchange{ $newstop } = $stopweight; #set foldchange for this gene
 	$relevant{ $newstop } = 1; #set the relevant hash
 	if ($stopweight > 0) {     #and set the weights hash value accordingly
@@ -122,8 +124,6 @@ if ($debug) { print "Reading in network from $sif\n"; }
 #hashes for holding regulation
 my %upby = ( );
 my %downby = ( );
-
-my $locked = ""; #string holding genes whose regulation is not to be changed (ie it's already known)
 
 #Read in the sif file with all known links.
 my $fh1 = new FileHandle('< ' . $sif);
@@ -164,11 +164,11 @@ while(<$fh1>) {
 
 		#if $molecule2 is already in the direct target hash
 		if ( exists ($direct{ $molecule1 }{ $molecule2} ) ) {
-			#if the recorded regulation is different to the current regulation, and is not "both", set it t"both"
+			#if the recorded regulation is different to the current regulation, set it to "both"
 			#it will no longer be considered as a direct target, but will be determined by the context of the network like all the other genes
 			#in this case, the only way to force the target is to make it part of the stoplist
-			#if the regulation is the same, or it is already "both", don't do anything
-			if ( ( $direct{ $molecule1 }{ $molecule2 } !~ /$activity/ ) && ( $direct{ $molecule1 }{ $molecule2 } !~ m/both/ ) ) {
+			#if the regulation is the same, don't do anything
+			if ( $direct{ $molecule1 }{ $molecule2 } !~ /$activity/ ) {
 				$direct{ $molecule1 }{ $molecule2 } = "both";
 			}
 		} else {
@@ -181,7 +181,9 @@ while(<$fh1>) {
 		my ( @mols ) = split(/;/, $molecule1);
 		my $jim;
 		for $jim ( 0 .. $#mols ) {
-			if (!(exists($weights{ $mols[ $jim ] }) ) ) { $weights{ $mols[ $jim ] } = 0; }
+			if (!(exists($weights{ $mols[ $jim ] }) ) ) { 
+				$weights{ $mols[ $jim ] } = 0; 
+			}
 			$times{ $mols[ $jim ] } = 0;
 		}
 	}
@@ -196,7 +198,7 @@ while(<$fh1>) {
 	#Finally, add the source of the data to the source hash
 	my $sourcekey = $molecule1." (".$activity.") ".$molecule2;
 	if( exists( $source{ $sourcekey } ) ) { #if there's already an entry for this regulation
-		if ($source{ $sourcekey } =~ /$ref/) { #check to see if this particular source has already been noted (there will be duplicate entries)
+		if ($source{ $sourcekey } !~ /$ref/) { #check to see if this particular source has already been noted (there will be duplicate entries)
 			$source{ $sourcekey } = $source{ $sourcekey }.";".$ref; #if not, add it
 		}
 	} else { #if there isn't an entry, make one
@@ -245,10 +247,6 @@ while(<$fh3>) {
 }
 $fh3->close();
 
-#put the locked gene list into the first position of the microarray array:
-$marray[ 0 ] = $locked;
-
-if ($debug) { print "List of locked genes is $locked\n"; }
 
 ###########################################################
 ## If "targets" is set, go through the hash and add each ##
@@ -259,22 +257,28 @@ if ($debug) { print "List of locked genes is $locked\n"; }
 if ( $targets ) {
 	foreach my $stopgene ( keys %direct  ) {
 		foreach my $gene (keys %{ $direct{ $stopgene } } ) {
-			if ($direct{ $stopgene }{ $gene } =~ m/upregulates/ ) {
-				$weights{ $gene } = $weights{ $stopgene };
-				if ( $stoplist !~ /$gene/ ) {
-					$stoplist = $stoplist.$gene."\t";
-				}
-			} elsif ( $direct{ $stopgene }{ $gene } =~ m/downregulates/ ) {
-				$weights{ $gene } = $weights{ $stopgene } * -1;
-				if ( $stoplist !~ /$gene/ ) {
-					$stoplist = $stoplist.$gene."\t";
+			if ( $locked !~ /$gene/ ) { #if the gene is not locked (ie do not change the weight of a gene with known misregulation even if it's a known target - the data take precedence)
+				if ($direct{ $stopgene }{ $gene } =~ m/upregulates/ ) {
+					$weights{ $gene } = $weights{ $stopgene };
+					$relevant{ $gene } = 1;
+					if ( $locked !~ $gene ) { $locked = $locked.$gene."\t"; }#add gene to the locked list
+					if ( $debug ) { print "Direct target $gene added to locked list, list is now $locked\n"; }
+				} elsif ( $direct{ $stopgene }{ $gene } =~ m/downregulates/ ) {
+					$weights{ $gene } = $weights{ $stopgene } * -1;
+					$relevant{ $gene } = 1;
+					if ( $locked !~ $gene ) { $locked = $locked.$gene."\t"; } #add gene to the locked list
+					if ( $debug ) { print "Direct target $gene added to locked list, list is now $locked\n"; }
 				}
 			}
 		}
 	}
-	if ( $debug ) { print "Direct targets added; stoplist is now $stoplist\n"; }
 }
 
+
+#put the locked gene list into the first position of the microarray array:
+$marray[ 0 ] = $locked;
+
+if ($debug) { print "List of locked genes is $locked\n"; }
 
 ###########################################################
 ## This is where the expression values are predicted.    ##
@@ -438,7 +442,7 @@ foreach my $gene ( keys %relevant ) {
 			if ( ( $weights{ $tflist[ $minnie ] } * $weights{ $gene } ) >= 0 ) {
 				$squpreg{ $tflist[ $minnie ] }{$gene} = 1;
 				$squpby{ $gene }{ $tflist[ $minnie ] } = 1;
-				if ($debug) { print "$gene is upregulated by $TF2; Squpby is $squpby{ $gene }{ $tflist[ $minnie ] } for $gene and { $tflist[ $minnie ] }\n"; }
+				if ($debug) { print "$gene is upregulated by $TF2; Squpby is $squpby{ $gene }{ $tflist[ $minnie ] } for $gene and $tflist[ $minnie ]\n"; }
 			}
 		}
 	}
@@ -453,7 +457,7 @@ foreach my $gene ( keys %relevant ) {
 			if ( ( $weights{ $tflist[ $minnie ] } * $weights{ $gene } ) <= 0 ) {
 				$sqdownreg{ $tflist[ $minnie ] }{ $gene } = 1;
 				$sqdownby{ $gene }{ $tflist[ $minnie ] } = 1;
-				if ($debug) { print "$gene is downregulated by $TF4; Sqdownby is $sqdownby{ $gene }{ $tflist[ $minnie ] } for $gene and { $tflist[ $minnie ] }\n"; }
+				if ($debug) { print "$gene is downregulated by $TF4; Sqdownby is $sqdownby{ $gene }{ $tflist[ $minnie ] } for $gene and $tflist[ $minnie ]\n"; }
 			}
 		}
 	}
@@ -600,10 +604,15 @@ if ( $short ) { #if shortest paths desired
 	#print the number of genes found to be linked in the shortest paths between stoplist and input microarray
 	my $printsize = keys %toprint;
 	print STDERR "Found $printsize linked genes in shortest paths\n";
+	if ($debug) { print "Found $printsize linked genes in shortest paths\n"; }
 } else {
 	foreach my $magenes ( keys %weights ) { #if "short" not set, mark every gene to be printed
 		$toprint{ $magenes } = 1;
+		if ($debug) { print "Adding $magenes to toprint\n"; }
 	}
+	my $printsize = keys %toprint;
+	print STDERR "Found $printsize relevant genes\n";
+	if ($debug) { print "Found $printsize relevant genes\n"; }
 }
 
 #################################################################################################
@@ -717,20 +726,6 @@ while ( $mboy <= $iterator ) { #go through the array
 
         $iterator = $#output; #reset the indexcounter in case a new set of genes was added to the array
         $mboy++; #increment iteration counter
-}
-
-#if targets set, there will be direct targets in the stoplist which need to be considered. These will be in the
-#direct hash
-if ( $targets ) {
-        foreach my $stopgene ( keys %direct  ) {
-                foreach my $gene (keys %{ $direct{ $stopgene } } ) {
-                        if ($direct{ $stopgene }{ $gene } =~ m/upregulates/ ) {
-                                print SIFOUT $stopgene."\tupregulates\t".$gene."\n";
-                        } elsif ( $direct{ $stopgene }{ $gene } =~ m/downregulates/ ) {
-				print SIFOUT $stopgene."\tdownregulates\t".$gene."\n";
-                        }
-		}
-	}
 }
 
 close (SIFOUT);
